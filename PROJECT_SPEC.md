@@ -95,6 +95,11 @@ ResNet18 reaches **0.9386 validation / 0.9363 test** (seed 42); at 40 epochs the
 same recipe stopped at 0.9164, because the learning rate was still near its peak
 when training ended.
 
+ResNet50 alone fell short of the recipe: it segfaulted at epoch 74 of 100 (an
+intermittent Windows fault; the same code ran three ResNet18 runs without
+trouble). The shipped checkpoint is epoch 70, validation 0.9366, test 0.9289.
+Every table labels it as such rather than pretending the run completed.
+
 Checkpoints land in `outputs/checkpoints/<model>_seed<k>.pt` and are gitignored.
 A model is only used in experiments if its validation accuracy is recorded in
 the run log; no number is ever hand-written.
