@@ -16,7 +16,8 @@ def risk_coverage(probs: torch.Tensor, y: torch.Tensor, grid=None) -> dict:
     n = conf.numel()
 
     if grid is None:
-        grid = np.concatenate([[0.0], np.arange(0.05, 1.0001, 0.05)])
+        # 从 0.01 起步：c=0 只取 1 个样本，risk 非 0 即 1，会把曲线开头拉成尖刺
+        grid = np.arange(0.01, 1.0001, 0.01)
     grid = np.asarray(grid, dtype=float)
     ks = np.clip(np.ceil(grid * n).astype(int), 1, n)
     risk = 1.0 - cum_acc.cpu().numpy()[ks - 1]

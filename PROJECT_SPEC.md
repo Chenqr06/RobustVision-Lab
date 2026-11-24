@@ -167,12 +167,16 @@ Note this is the *summed* multi-class variant, so its range is `[0, 2]`, not
 version will read 0.13 as a bug.
 
 **Risk–coverage** — sort samples by `conf` descending, sweep coverage
-`c ∈ {0.05, 0.10, …, 1.00}`, take the top `⌈c·n⌉` samples, define
+`c ∈ {0.01, 0.02, …, 1.00}`, take the top `⌈c·n⌉` samples, define
 `risk(c) = 1 − accuracy(accepted)`. Report:
 
 - the full curve (plotted),
-- `AURC` = area under `risk(c)`, trapezoid, over `c ∈ [0,1]`,
+- `AURC` = area under `risk(c)`, trapezoid, over `c ∈ [0.01, 1]`,
 - `risk@0.8` and `risk@0.9` — single numbers for tables.
+
+Starting at 0.01 instead of 0 matters: `c = 0` means keeping exactly one sample,
+so `risk(0)` is either 0 or 1 and the curve opens with a spike that drags the
+AURC around by luck. At 0.01 the smallest slice is 100 samples.
 
 Lower AURC is better. A model that is both accurate and well-calibrated gets a
 flat curve near its error rate; an overconfident one gets an L-shape.
@@ -186,7 +190,7 @@ launched by a script in `scripts/`, never by hand-editing state in a notebook.
 
 | ID | Content | Inputs | Est. time |
 |----|---------|--------|-----------|
-| E1 | Single perturbation sweep | 2 models × 7 perturbations × 5 strengths | ~4 min |
+| E1 | Single perturbation sweep | 2 models × 7 perturbations × 5 strengths | ~3 min |
 | E2 | Composite vs single | 2 models × 4 composites × 5 strengths | ~2 min |
 | E3 | Model comparison | aggregates E1/E2 | 0 |
 | E4 | Calibration | ECE/MCE/Brier/reliability on clean + worst perturbed | ~1 min |
@@ -197,6 +201,10 @@ Time estimates assume a trained checkpoint already exists; they cover inference
 only. Training happens once per model (Stage 2). Measured on the 4060:
 **14.4 s/epoch, 9.9 min for 40 epochs** at batch 128 — about 3× faster than the
 first estimate, which assumed 32×32 would be slower than it is.
+
+The whole grid (56 conditions, 10,000 images each) ran in about 4 minutes.
+`jpeg` dominates that: it round-trips every image through PIL one at a time,
+so it costs seconds where the tensor-space perturbations cost milliseconds.
 
 RQ2 needs a reference point, so the report also computes, for each composite,
 `Π accuracy of its members` and compares it against the measured composite
