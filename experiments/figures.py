@@ -68,6 +68,58 @@ def composite_bars(e2_rows, model_name, path):
     _save(fig, path)
 
 
+def normalized_damage(grid, model_name, path):
+    """每条线都归一化到 [1, 0]：1 是干净准确率，0 是它自己在 s=1.0 的水平。
+    这样比的是"掉得多快"，不是"掉多少"，跨扰动才有可比性。"""
+    feas = np.array([0.0] + STRENGTHS)
+    clean_probs, clean_labels = grid[("clean", 0.0)]
+    clean_acc = (clean_probs.argmax(1) == clean_labels).float().mean().item()
+
+    fig, ax = plt.subplots(figsize=(6.2, 4.0))
+    for name in SINGLE:
+        accs = [clean_acc]
+        for s in STRENGTHS:
+            probs, labels = grid[(name, s)]
+            accs.append((probs.argmax(1) == labels).float().mean().item())
+        floor = accs[-1]
+        span = clean_acc - floor
+        if span < 1e-6:
+            continue
+        ys = [(a - floor) / span for a in accs]
+        ax.plot(feas, ys, marker="o", ms=3, lw=1.4, label=name.replace("_", " "))
+    ax.set_xlabel("strength")
+    ax.set_ylabel("remaining damage (1 → 0)")
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_title(f"{model_name}: how fast each perturbation bites")
+    ax.legend(fontsize=7, ncol=2, frameon=False)
+    _save(fig, path)
+
+
+def model_comparison(agg, path):
+    """agg 是 aggregate.py 产出的 mean/std 表，一个模型一个子图。"""
+    models = sorted(agg["model"].unique())
+    fig, axes = plt.subplots(1, len(models), figsize=(3.4 * len(models) + 1.2, 3.6),
+                             sharey=True, squeeze=False)
+    axes = axes[0]
+    for ax, m in zip(axes, models):
+        sub = agg[agg["model"] == m]
+        runs = int(sub["runs"].max())
+        for name in SINGLE:
+            s = sub[sub["perturbation"] == name].sort_values("strength")
+            if not len(s):
+                continue
+            ax.plot(s["strength"], s["acc_mean"], marker="o", ms=3, lw=1.3,
+                    label=name.replace("_", " "))
+            ax.fill_between(s["strength"], s["acc_mean"] - s["acc_std"],
+                            s["acc_mean"] + s["acc_std"], alpha=0.15, lw=0)
+        ax.set_title(f"{m} ({runs} seed{'s' if runs > 1 else ''})", fontsize=9)
+        ax.set_xlabel("strength")
+        ax.set_ylim(0, 1)
+    axes[0].set_ylabel("test accuracy")
+    axes[0].legend(fontsize=6.5, ncol=2, frameon=False, loc="lower left")
+    _save(fig, path)
+
+
 def reliability_plot(grid, model_name, worst_key, path, n_bins=15):
     fig, ax = plt.subplots(figsize=(4.4, 4.2))
     ax.plot([0, 1], [0, 1], "--", color="grey", lw=1, label="perfect")

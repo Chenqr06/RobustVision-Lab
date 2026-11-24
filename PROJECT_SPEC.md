@@ -83,12 +83,17 @@ Training recipe (identical across models, only the backbone differs):
 ```yaml
 optimizer: sgd          # momentum 0.9, nesterov, weight_decay 5e-4
 lr: 0.1                 # cosine annealing to 0
-epochs: 40
+epochs: 100
 batch_size: 128
 label_smoothing: 0.0
-seed: 42
+seed: 42                # 43 and 44 for the other two runs
 amp: true               # fp16 autocast
 ```
+
+40 epochs was not enough. With the cosine schedule stretched over 100 epochs,
+ResNet18 reaches **0.9386 validation / 0.9363 test** (seed 42); at 40 epochs the
+same recipe stopped at 0.9164, because the learning rate was still near its peak
+when training ended.
 
 Checkpoints land in `outputs/checkpoints/<model>_seed<k>.pt` and are gitignored.
 A model is only used in experiments if its validation accuracy is recorded in
@@ -103,19 +108,41 @@ in place, and are parameterised by `strength s ∈ [0, 1]`, where `s = 0` is the
 identity. The RNG is seeded per call, so the same image gets the same corruption
 whichever model is being scored.
 
-| Key | Operation | Parameter from `s` |
-|-----|-----------|--------------------|
-| `gaussian_noise` | additive Gaussian | `σ = 0.15 · s` |
-| `gaussian_blur` | Gaussian kernel | `k = 2·round(1+3s)+1`, `σ = 0.1 + 2.0s` |
-| `motion_blur` | directional convolution | kernel length `2·round(1+5s)+1`, angle drawn per image from the seeded RNG |
-| `brightness` | multiplicative | `factor = 1 + 0.8s` (brighten only; darkening is `contrast`'s job) |
-| `contrast` | blend toward mean | `factor = 1 - 0.8s` |
-| `occlusion` | grey square, random position | side `= floor(32 · sqrt(0.05 + 0.45s))` |
-| `jpeg` | encode/decode | quality `= round(100 - 90s)` |
+Strength is a **lookup table, not a formula.** Five anchors at
+`s ∈ {0.2, 0.4, 0.6, 0.8, 1.0}`, linearly interpolated in between:
+
+| Key | Operation | s=0.2 | 0.4 | 0.6 | 0.8 | 1.0 |
+|-----|-----------|-------|-----|-----|-----|-----|
+| `gaussian_noise` | additive Gaussian, σ | 0.03 | 0.07 | 0.12 | 0.18 | 0.26 |
+| `gaussian_blur` | Gaussian kernel k / σ | 3 / 0.5 | 5 / 0.8 | 7 / 1.2 | 9 / 1.6 | 11 / 2.0 |
+| `motion_blur` | directional kernel length | 3 | 5 | 7 | 9 | 11 |
+| `brightness` | multiply by factor | 0.94 | 0.82 | 0.62 | 0.38 | 0.16 |
+| `contrast` | blend toward mean, factor | 0.90 | 0.74 | 0.55 | 0.33 | 0.12 |
+| `occlusion` | grey square, area fraction | 0.03 | 0.08 | 0.16 | 0.28 | 0.44 |
+| `jpeg` | quality | 85 | 60 | 35 | 18 | 8 |
+
+Measured accuracy at `s = 1.0` (ResNet18): 0.10 – 0.30 for six of the seven.
+`jpeg` stops at 0.46 because 32×32 images survive compression better than
+larger ones — that ceiling is real, not a tuning failure.
+
+**The linear formulas this replaced were broken.** The first version used
+`k = 2·round(1+5s)+1` for motion blur, which meant `s = 0.2` already dropped
+accuracy from 0.91 to 0.44 while gaussian blur at the same `s` barely moved.
+Any cross-perturbation comparison on one chart was unfair. A table with
+per-corruption anchors is what CIFAR-10-C does, for the same reason.
+
+**Brightness darkens, it does not brighten.** `factor < 1`. Brightening by
+more than ~1.8× saturates most pixels to 255 and stops changing the image, so
+the curve flattened out no matter how much strength was added.
 
 Strength grid: `s ∈ {0.2, 0.4, 0.6, 0.8, 1.0}`, plus `s = 0` as the clean
 baseline. Every perturbation is applied to the **whole test set**, not a
 sample, for RQ1.
+
+Because the absolute damage differs by corruption, RQ1 is also reported as a
+**normalised damage curve**: each perturbation's accuracy rescaled so 1.0 is its
+clean accuracy and 0.0 is its own `s = 1.0` level. That compares how fast each
+one bites, which the raw curves cannot show.
 
 Composites (RQ2), applied in this fixed order:
 
@@ -196,6 +223,7 @@ launched by a script in `scripts/`, never by hand-editing state in a notebook.
 | E4 | Calibration | ECE/MCE/Brier/reliability on clean + worst perturbed | ~1 min |
 | E5 | Risk–coverage | AURC + curve per model × condition | ~1 min |
 | E6 | Selective prediction under shift | risk@coverage per perturbation type | ~1 min |
+| E7 | Post-hoc temperature scaling | fit T on validation, apply to every test condition | <1 min |
 
 Time estimates assume a trained checkpoint already exists; they cover inference
 only. Training happens once per model (Stage 2). Measured on the 4060:
@@ -315,7 +343,7 @@ to be downloaded.
 | Pretrained weights partially discarded at the stem | record the matched-tensor count per run (119/122 for ResNet18); a from-scratch run would quantify the gap |
 | CIFAR-10 test set gets used during development | only the validation split is touched before the final tables; each run record names its split |
 | Composite interaction claimed without evidence | E2 reports the per-strength gap only; "worse than the sum" needs the gap to hold across 5 strengths × 2 models |
-| Report overfitted to a lucky seed | final tables use seeds {42, 43, 44}; single-seed numbers are labelled exploratory |
+| Report overfitted to a lucky seed | final tables use seeds {42, 43, 44}; measured spread was 0.0008 accuracy, so the seed is not doing any work |
 | 8 GB VRAM | batch 128 at 32×32 stays far below the limit — ResNet18 trained for 40 epochs without pressure |
 
 ## 11. Acceptance

@@ -126,6 +126,31 @@ def e6_table(grid, model_name, strength=0.6):
     return rows
 
 
+def e7_temperature(grid, model_name, val_probs, val_labels):
+    """在验证集上拟合一个温度，看它对 test 各条件的校准能修好多少。"""
+    from metrics.temperature import apply_temperature, fit_temperature
+
+    t = fit_temperature(val_probs, val_labels)
+    rows = [("clean", 0.0)] + [(n, 1.0) for n in SINGLE + list(COMPOSITES)]
+    out = []
+    for key in rows:
+        if key not in grid:
+            continue
+        probs, labels = grid[key]
+        name = key[0] if key[0] == "clean" else f"{key[0]}_s{key[1]:.1f}"
+        out.append({
+            "model": model_name,
+            "condition": name,
+            "temperature": round(t, 4),
+            "accuracy": accuracy(probs, labels),
+            "ece_before": ece(probs, labels, 15),
+            "ece_after": ece(apply_temperature(probs, t), labels, 15),
+        })
+    return out, t
+
+
+CLEAN_FIELDS = ["model", "seed", "accuracy", "ece15", "ece_adaptive", "mce",
+                "brier", "aurc", "risk_at_0.8", "risk_at_0.9"]
 E1_FIELDS = ["model", "perturbation", "strength", "accuracy", "ece15", "ece_adaptive",
              "mce", "brier", "aurc", "risk_at_0.8", "risk_at_0.9"]
 E2_FIELDS = ["model", "composite", "members", "strength", "composite_acc",
@@ -134,3 +159,4 @@ E4_FIELDS = ["model", "condition", "bin", "count", "bin_conf", "bin_acc"]
 E5_FIELDS = ["model", "condition", "coverage", "risk", "aurc"]
 E6_FIELDS = ["model", "perturbation", "strength", "accuracy", "risk_at_0.8",
              "risk_at_0.9", "aurc"]
+E7_FIELDS = ["model", "condition", "temperature", "accuracy", "ece_before", "ece_after"]

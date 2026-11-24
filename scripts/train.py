@@ -35,11 +35,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--epochs", type=int, default=None)
+    ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
 
     cfg = load_config(args.config)
     if args.epochs:
         cfg["epochs"] = args.epochs
+    if args.seed is not None:
+        cfg["seed"] = args.seed
     device = "cuda" if torch.cuda.is_available() else "cpu"
     set_seed(cfg["seed"])
 

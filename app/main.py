@@ -66,6 +66,18 @@ def show_png(path: Path, caption: str = ""):
         st.info(f"还没生成 {path.name}，先跑 scripts/run_experiment.py")
 
 
+def fig_path(run: str, kind: str) -> Path:
+    # run 目录叫 resnet18_seed42，图叫 resnet18_s42_*.png
+    return FIG / f"{run.replace('_seed', '_s')}_{kind}.png"
+
+
+def run_label(run: str) -> str:
+    if "_seed" not in run:
+        return run
+    m, s = run.rsplit("_seed", 1)
+    return f"{m} · seed {s}"
+
+
 models = available_models()
 if not models:
     st.warning("outputs/results 下没有结果。先跑：python scripts/run_experiment.py --model resnet18")
@@ -76,22 +88,27 @@ page = st.sidebar.radio("页面", [
     "Overview", "Image Perturbation", "Model Comparison",
     "Calibration", "Selective Prediction", "Experiment History",
 ])
-model = st.sidebar.selectbox("模型", models)
-st.sidebar.caption("数据：CIFAR-10 test 10000 张，单种子 42")
+model = st.sidebar.selectbox("run", models, format_func=run_label)
+st.sidebar.caption("数据：CIFAR-10 test 10000 张")
 
 e1 = read_csv(RES / model / "e1_single.csv")
 
 if page == "Overview":
     st.title("Overview")
+    clean_df = read_csv(RES / model / "e0_clean.csv")
     c1, c2, c3, c4 = st.columns(4)
-    base = pd.read_json(OUT / "runs" / "eval" / f"{model}_test.json", typ="series")
-    c1.metric("Accuracy (clean)", f"{float(base['accuracy']):.3f}")
-    c2.metric("ECE (15 bins)", f"{float(base['ece15']):.3f}")
-    c3.metric("Brier", f"{float(base['brier']):.3f}")
-    c4.metric("AURC", f"{float(base['aurc']):.3f}")
+    if len(clean_df):
+        c1.metric("Accuracy (clean)", f"{float(clean_df.accuracy[0]):.3f}")
+        c2.metric("ECE (15 bins)", f"{float(clean_df.ece15[0]):.3f}")
+        c3.metric("Brier", f"{float(clean_df.brier[0]):.3f}")
+        c4.metric("AURC", f"{float(clean_df.aurc[0]):.3f}")
 
     st.subheader("Single perturbations")
-    show_png(FIG / f"{model}_robustness.png")
+    show_png(fig_path(model, "robustness"))
+
+    st.subheader("归一化后的破坏速度")
+    show_png(fig_path(model, "normalized"),
+             "每条线按自身在 s=1.0 的损失归一化：比的是掉得多快，不是掉多少")
 
     st.subheader("最脆弱 / 最稳健")
     if len(e1):
@@ -129,29 +146,29 @@ elif page == "Image Perturbation":
 elif page == "Model Comparison":
     st.title("Model Comparison")
     if len(models) < 2:
-        st.info("目前只有一个模型的结果，训练 resnet50 之后这里会自动出现对比。")
+        st.info("目前只有一个 run，训完 resnet50 或 seed 43/44 之后这里会自动出对比。")
     rows = []
     for m in models:
         df = read_csv(RES / m / "e1_single.csv")
         if len(df):
-            rows.append(df.assign(model=m))
+            rows.append(df.assign(run=run_label(m)))
     if rows:
         all_e1 = pd.concat(rows)
         pick = st.multiselect("扰动", sorted(all_e1.perturbation.unique()),
                               default=sorted(all_e1.perturbation.unique())[:3])
         if pick:
             sub = all_e1[all_e1.perturbation.isin(pick)]
-            pivot = sub.pivot_table(index="strength", columns=["perturbation", "model"],
+            pivot = sub.pivot_table(index="strength", columns=["perturbation", "run"],
                                     values="accuracy")
             st.line_chart(pivot)
         st.dataframe(
-            all_e1.groupby(["model", "perturbation"]).accuracy.mean().round(4).unstack(),
+            all_e1.groupby(["run", "perturbation"]).accuracy.mean().round(4).unstack(),
             width="stretch",
         )
 
 elif page == "Calibration":
     st.title("Calibration")
-    show_png(FIG / f"{model}_reliability.png", "可靠性图：干净数据 vs 最差扰动条件")
+    show_png(fig_path(model, "reliability"), "可靠性图：干净数据 vs 最差扰动条件")
     e4 = read_csv(RES / model / "e4_reliability.csv")
     if len(e4):
         conds = e4.condition.unique().tolist()
@@ -163,9 +180,27 @@ elif page == "Calibration":
             "置信度与实际正确率脱节越远，越说明模型在扰动下过度自信。"
         )
 
+    e7 = read_csv(RES / model / "e7_temperature.csv")
+    if len(e7):
+        st.subheader("Post-hoc 温度缩放")
+        t = float(e7.temperature.iloc[0])
+        st.caption(f"在验证集上拟合 T = {t:.2f}，直接用到 test 的所有条件上")
+        show = e7[["condition", "accuracy", "ece_before", "ece_after"]].copy()
+        for c in ("accuracy", "ece_before", "ece_after"):
+            show[c] = show[c].round(3)
+        show["降幅"] = (e7.ece_before - e7.ece_after).round(3)
+        st.dataframe(show, width="stretch", hide_index=True)
+        clean_row = e7[e7.condition == "clean"].iloc[0]
+        st.markdown(
+            f"干净数据 ECE 从 {clean_row.ece_before:.3f} 降到 {clean_row.ece_after:.3f}，"
+            f"修得很好。但最差的扰动只从 {e7.ece_before.max():.3f} 降到 "
+            f"{e7.loc[e7.ece_before.idxmax(), 'ece_after']:.3f}——"
+            "一个标量温度救不了分布偏移下的过度自信。"
+        )
+
 elif page == "Selective Prediction":
     st.title("Selective Prediction")
-    show_png(FIG / f"{model}_risk_coverage.png", "低置信度样本被拒绝后的风险-覆盖率曲线")
+    show_png(fig_path(model, "risk_coverage"), "低置信度样本被拒绝后的风险-覆盖率曲线")
     e6 = read_csv(RES / model / "e6_selective.csv")
     if len(e6):
         st.subheader("强度 0.6 下的选择性预测")
