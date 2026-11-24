@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 实验产物：不进仓库
+outputs/
+data/
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.npz
+
+# 数据集下载缓存
+.cache/
+
+# 工具
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

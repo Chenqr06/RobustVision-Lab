@@ -1,0 +1,11 @@
+# CUDA 版 torch 要从官方源装，别用 pypi 默认（那是 cpu-only）：
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# 其余依赖：
+numpy
+pandas
+matplotlib
+scikit-learn
+pyyaml
+tqdm
+pillow
+streamlit
