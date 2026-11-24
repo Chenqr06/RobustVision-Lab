@@ -28,7 +28,7 @@ measurement project, not a method project.
 
 ## 2. Dataset
 
-**CIFAR-10**, downloaded automatically by `torchvision.datasets`.
+**CIFAR-10**, downloaded once into a local npz.
 
 - 50,000 train / 10,000 test, 32×32 RGB, 10 classes.
 - Split: 45,000 train / 5,000 validation, carved from the 50k with a fixed
@@ -38,13 +38,25 @@ measurement project, not a method project.
   (`mean=(0.4914,0.4822,0.4465)`, `std=(0.2023,0.1994,0.2010)`).
 - Training augmentation: random crop 32 with padding 4, random horizontal flip.
   No augmentation at evaluation time.
-- Cache under `data/`, never committed. `download=True` on first run.
+
+**Data source deviates from the obvious path, on purpose.** `torchvision`'s
+official mirror (`cs.toronto.edu`) measured ~90 KB/s from this machine, i.e.
+30+ minutes for 170 MB. `scripts/download_data.py` therefore pulls the
+HuggingFace mirror of CIFAR-10 (`uoft-cs/cifar10`, parquet, ~1 MB/s via
+hf-mirror.com) and converts it to `data/cifar10.npz` (uint8 arrays, 184 MB).
+Loading goes through `dataio.CifarArray` instead of `torchvision.datasets`, so
+there is no pickle layer and no download on import. Anyone outside mainland
+China can swap in the official tarball if they prefer; the npz arrays are
+byte-identical to the official images.
+
+Files live under `data/`, never committed (`.gitignore`d).
 
 **Decision: keep 32×32, do not upsample to 224.** Upsampling adds no
 information; it only exists to flatter ImageNet weights. It also multiplies
 inference cost by 49×, which matters because the perturbation grid runs 7×5×2
-forward passes over 10,000 images. CIFAR-native training reaches 94–95% with
-ResNet18, high enough that a perturbation-induced drop is interpretable.
+forward passes over 10,000 images. CIFAR-native training reaches 91.2% test
+accuracy with ResNet18 in 40 epochs, high enough that a perturbation-induced
+drop is interpretable.
 
 ---
 
@@ -182,8 +194,9 @@ launched by a script in `scripts/`, never by hand-editing state in a notebook.
 | E6 | Selective prediction under shift | risk@coverage per perturbation type | ~1 min |
 
 Time estimates assume a trained checkpoint already exists; they cover inference
-only. Training happens once per model (Stage 2), roughly 25–35 min each on the
-4060 at batch 128.
+only. Training happens once per model (Stage 2). Measured on the 4060:
+**14.4 s/epoch, 9.9 min for 40 epochs** at batch 128 — about 3× faster than the
+first estimate, which assumed 32×32 would be slower than it is.
 
 RQ2 needs a reference point, so the report also computes, for each composite,
 `Π accuracy of its members` and compares it against the measured composite
