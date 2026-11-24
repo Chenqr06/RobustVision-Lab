@@ -1,0 +1,12 @@
+name: resnet18
+dataset: cifar10
+seed: 42
+epochs: 40
+batch_size: 128
+optimizer: sgd
+lr: 0.1
+momentum: 0.9
+weight_decay: 0.0005
+label_smoothing: 0.0
+amp: true
+num_workers: 2
