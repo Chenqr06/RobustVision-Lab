@@ -2,7 +2,7 @@
 
 视觉模型鲁棒性、置信度校准与选择性预测的实验平台。
 
-围绕四个问题搭一套评估流程，不是又一个图片分类 demo：
+围绕四个问题做一套评估流程，重点在测，不在训：
 
 - RQ1 图像分布偏移下模型性能怎么变
 - RQ2 单一扰动 vs 复合扰动的差异
@@ -11,8 +11,8 @@
 
 > 主仓库：https://github.com/Chenqr06/RobustVision-Lab
 
-设计细节（数据集划分、扰动参数、指标定义、实验矩阵）全部写在
-[PROJECT_SPEC.md](PROJECT_SPEC.md)，代码里不含未记录的约定。
+细节都在 [PROJECT_SPEC.md](PROJECT_SPEC.md)：数据集划分、扰动参数、指标定义、实验矩阵。
+代码里没有规范外的东西。
 
 ## 状态
 
@@ -41,8 +41,8 @@ ResNet18，CIFAR-10 test 集 10000 张，40 epoch，单种子 42。
 | Risk @ 80% coverage | 0.0194 |
 | Risk @ 90% coverage | 0.0446 |
 
-两个 ECE 几乎相等，说明分箱方式在这里不是主要变量；MCE 0.24 说明个别箱偏差很大，
-只看 ECE 会低估局部校准问题——这正是 SPEC 要求同时报三个数的原因。
+两个 ECE 几乎一样，说明分箱方式在这里影响不大。但 MCE 0.24 挺扎眼——有个箱子
+偏了二十多个点。光看 ECE 会以为模型校准得还行，所以三个数一起报。
 
 ## 环境
 
@@ -63,7 +63,7 @@ Windows 上 pypi 默认的 torch wheel 是 CPU 版，必须走 `download.pytorch
 python scripts/download_data.py                                    # 下载并转 npz
 python scripts/train.py --config configs/resnet18.yaml             # 40 epoch，约 10 分钟
 python scripts/evaluate.py --ckpt outputs/checkpoints/resnet18_seed42.pt --model resnet18
-pytest                                                             # 60 个测试
+pytest                                                             # 61 个测试
 ```
 
 数据走 hf-mirror 的 parquet 镜像（官方源在国内实测约 90 KB/s，不可用），

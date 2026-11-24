@@ -3,8 +3,9 @@
 Version 0.1 · 2026-11-24
 Status: approved for implementation (Stage 2 onward)
 
-This document fixes every decision that would be expensive to change later. If
-something here turns out wrong, update the document first, then the code.
+Decisions that are painful to reverse once the code exists.
+
+If something here turns out wrong, change this file before the code.
 
 ---
 
@@ -15,7 +16,7 @@ classifiers under perturbation:
 
 | ID | Question | Operationalised as |
 |----|----------|--------------------|
-| RQ1 | How does accuracy move under different distribution shifts? | 7 single perturbations × 5 strengths × 2 datasets splits, reported as accuracy drop vs clean |
+| RQ1 | How does accuracy move under different distribution shifts? | 7 single perturbations × 5 strengths × 2 models, reported as accuracy drop vs clean |
 | RQ2 | Is a composition of perturbations different from the sum of its parts? | 4 composites vs the product of their single-perturbation accuracies |
 | RQ3 | Does confidence track correctness? | ECE, MCE, Brier, reliability diagrams |
 | RQ4 | Can rejecting low-confidence predictions cut error? | Risk–coverage curve, AURC, risk at 80/90% coverage |
@@ -39,24 +40,23 @@ measurement project, not a method project.
 - Training augmentation: random crop 32 with padding 4, random horizontal flip.
   No augmentation at evaluation time.
 
-**Data source deviates from the obvious path, on purpose.** `torchvision`'s
-official mirror (`cs.toronto.edu`) measured ~90 KB/s from this machine, i.e.
-30+ minutes for 170 MB. `scripts/download_data.py` therefore pulls the
-HuggingFace mirror of CIFAR-10 (`uoft-cs/cifar10`, parquet, ~1 MB/s via
-hf-mirror.com) and converts it to `data/cifar10.npz` (uint8 arrays, 184 MB).
-Loading goes through `dataio.CifarArray` instead of `torchvision.datasets`, so
-there is no pickle layer and no download on import. Anyone outside mainland
-China can swap in the official tarball if they prefer; the npz arrays are
-byte-identical to the official images.
+**Data source.** `torchvision`'s default mirror is `cs.toronto.edu`, which
+measured ~90 KB/s here — 30+ minutes for 170 MB. A proxy made it worse, 78 B/s.
+So `scripts/download_data.py` pulls the HuggingFace mirror of CIFAR-10
+(`uoft-cs/cifar10`, parquet, peaked at 2.5 MB/s through hf-mirror.com) and
+converts it to `data/cifar10.npz` (uint8, 184 MB). Loading goes through
+`dataio.CifarArray` rather than `torchvision.datasets`, which drops the pickle
+layer and the download-on-import. The arrays are the same pixels as the
+official release; anyone with fast access to the tarball can unpack it and
+compare.
 
 Files live under `data/`, never committed (`.gitignore`d).
 
 **Decision: keep 32×32, do not upsample to 224.** Upsampling adds no
-information; it only exists to flatter ImageNet weights. It also multiplies
-inference cost by 49×, which matters because the perturbation grid runs 7×5×2
-forward passes over 10,000 images. CIFAR-native training reaches 91.2% test
-accuracy with ResNet18 in 40 epochs, high enough that a perturbation-induced
-drop is interpretable.
+information; it only exists to suit ImageNet weights. It also multiplies
+inference cost by 49×, and the perturbation grid runs 7×5×2 forward passes over
+10,000 images. Training at 32×32 gets ResNet18 to 91.2% test accuracy in 40
+epochs — high enough that a perturbation-induced drop means something.
 
 ---
 
@@ -69,9 +69,10 @@ Two backbones, both `torchvision` ImageNet-pretrained:
 | `resnet18` | ResNet-18 | `conv1` → 3×3, stride 1, padding 1, bias=False; `maxpool` → Identity |
 | `resnet50` | ResNet-50 | same |
 
-The first stem layer is re-initialised (shape mismatch); everything else loads
-from the pretrained checkpoint. This is recorded per run in the experiment
-record (`pretrained_layers_loaded: 118/122`) so nobody has to guess later.
+The first stem layer is re-initialised because the shape no longer matches;
+everything else loads from the checkpoint. ResNet18 came out at **119 of 122
+tensors matched**. That number goes into every run record, so it never has to
+be re-measured.
 
 `mobilenet_v3_large` is **deferred**. Its stem downsamples 32×32 to 1×1, which
 would need stride surgery on three stages. It is listed as optional in the
@@ -97,10 +98,10 @@ the run log; no number is ever hand-written.
 
 ## 4. Perturbations
 
-All operate on a float tensor `x ∈ [0,1]` of shape `(N, 3, 32, 32)`, in-place
-free, and are parameterised by `strength s ∈ [0, 1]` with `s = 0` meaning
-identity. RNG is seeded per call so the same image gets the same corruption
-across models.
+All take a float tensor `x ∈ [0,1]` of shape `(N, 3, 32, 32)`, never modify it
+in place, and are parameterised by `strength s ∈ [0, 1]`, where `s = 0` is the
+identity. The RNG is seeded per call, so the same image gets the same corruption
+whichever model is being scored.
 
 | Key | Operation | Parameter from `s` |
 |-----|-----------|--------------------|
@@ -129,9 +130,8 @@ In a composite, all members share the same `s`. Random-order pipelines are a
 backlog item, not part of the main results.
 
 **Why fixed order**: order changes the result (blur-then-noise ≠
-noise-then-blur), and a fixed order is what makes the number reproducible. The
-order sensitivity itself is worth one sentence in the report, not a whole
-experiment.
+noise-then-blur), and only a fixed order gives a reproducible number. Order
+sensitivity gets one sentence in the report, not an experiment.
 
 ---
 
@@ -153,8 +153,8 @@ ECE = Σ_m (|B_m| / n) · |acc(B_m) − conf(B_m)|
 `M = 15` bins by default, bin index `min(floor(conf · M), M−1)` so that
 `conf = 1.0` lands in the last bin instead of an out-of-range 16th. Empty bins
 contribute 0. Also report **MCE** (`max` over non-empty bins) and an
-**adaptive/equal-frequency ECE** as a robustness check, because ECE moves with
-bin count and a single number invites over-reading.
+**adaptive/equal-frequency ECE**. ECE shifts with bin count, and one number is
+easy to over-read.
 
 **Brier score** (multi-class, mean squared error against the one-hot target):
 
@@ -163,8 +163,8 @@ Brier = (1/n) Σ_i Σ_k (p_ik − y_ik)²
 ```
 
 Note this is the *summed* multi-class variant, so its range is `[0, 2]`, not
-`[0, 1]`. The README must say so, otherwise the number looks wrong to anyone
-who only knows the binary version.
+`[0, 1]`. Spell that out in the README, or anyone who only knows the binary
+version will read 0.13 as a bug.
 
 **Risk–coverage** — sort samples by `conf` descending, sweep coverage
 `c ∈ {0.05, 0.10, …, 1.00}`, take the top `⌈c·n⌉` samples, define
@@ -280,7 +280,7 @@ bug, not noise.
 
 ## 9. Testing
 
-`pytest`, run before every commit. Non-negotiable cases:
+`pytest`, before every commit. These cases have to exist:
 
 | Test | Why |
 |------|-----|
@@ -292,7 +292,7 @@ bug, not noise.
 | AURC is monotone: a strictly better-ranked model has lower AURC | catches a reversed sort |
 | Perturbation with `s=0` returns the input unchanged (within 1e-6) | identity contract |
 | Same seed → identical perturbed tensor; different seed → different | reproducibility contract |
-| Deterministic full-batch inference reproduces accuracy on 3 fixed images | catches eval-mode / normalisation drift |
+| `eval()` mode returns identical logits on repeated calls | catches dropout / BN drift |
 
 Perturbation tests run on synthetic tensors; they must not require the dataset
 to be downloaded.
@@ -303,12 +303,12 @@ to be downloaded.
 
 | Risk | Mitigation |
 |------|-----------|
-| ECE quietly wrong (most common failure in this literature) | the five calibration tests above, plus a hand-computed 4-sample example in a test |
-| Pretrained weights partially discarded at the stem | record loaded layer count per run; optionally train one model from scratch as an ablation and report the gap |
-| CIFAR-10 test set gets used during development | validation split is the only thing touched before the final tables; a note in the run record says which split |
-| Composite interaction claimed without evidence | E2 only reports the per-strength gap; the "worse than the sum" wording requires consistency across 5 strengths × 2 models |
-| Overfitting the report to a lucky seed | main tables use seeds {42, 43, 44}; single-seed runs are marked as exploratory |
-| 8 GB VRAM | batch 128 at 32×32 uses a few hundred MB; AMP on; no risk here |
+| ECE quietly wrong (the most common mistake in this literature) | the calibration tests above, plus a hand-computed 4-sample example |
+| Pretrained weights partially discarded at the stem | record the matched-tensor count per run (119/122 for ResNet18); a from-scratch run would quantify the gap |
+| CIFAR-10 test set gets used during development | only the validation split is touched before the final tables; each run record names its split |
+| Composite interaction claimed without evidence | E2 reports the per-strength gap only; "worse than the sum" needs the gap to hold across 5 strengths × 2 models |
+| Report overfitted to a lucky seed | final tables use seeds {42, 43, 44}; single-seed numbers are labelled exploratory |
+| 8 GB VRAM | batch 128 at 32×32 stays far below the limit — ResNet18 trained for 40 epochs without pressure |
 
 ## 11. Acceptance
 
@@ -326,11 +326,11 @@ Every number in the README comes from a run record in `outputs/runs/`.
 
 ---
 
-## 12. Backlog (explicitly not now)
+## 12. Backlog (not now)
 
 - `mobilenet_v3_large` (stem surgery)
 - random-order composites
 - CIFAR-10-C as an external, published shift baseline
 - temperature scaling as a post-hoc calibration baseline
 - confidence histogram on the app's Overview page
-- second seed sweep for the final tables
+- ablation: same recipe trained from scratch, to price the pretrained init

@@ -34,6 +34,15 @@ def test_predict_proba_sums_to_one():
     assert torch.allclose(p.sum(1), torch.ones(3), atol=1e-5)
 
 
+def test_eval_mode_deterministic():
+    net = build_model("resnet18", pretrained=False).eval()
+    x = torch.randn(2, 3, 32, 32)
+    with torch.no_grad():
+        a = net(x)
+        b = net(x)
+    assert torch.equal(a, b)
+
+
 def test_unknown_model_raises():
     try:
         build_model("vgg16", pretrained=False)
