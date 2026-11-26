@@ -36,6 +36,10 @@ def main():
     ap.add_argument("--config", required=True)
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--workers", type=int, default=None,
+                    help="覆盖 dataloader worker 数，崩溃排查时设 0")
+    ap.add_argument("--resume", action="store_true",
+                    help="从 _last.pt 继续，优化器与调度器状态一并恢复")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -43,6 +47,8 @@ def main():
         cfg["epochs"] = args.epochs
     if args.seed is not None:
         cfg["seed"] = args.seed
+    if args.workers is not None:
+        cfg["num_workers"] = args.workers
     device = "cuda" if torch.cuda.is_available() else "cpu"
     set_seed(cfg["seed"])
 
@@ -52,19 +58,31 @@ def main():
 
     net = build_model(cfg["name"], pretrained=True).to(device)
     loaded, total = pretrained_report(cfg["name"])
-    print(f"预训练权重 {loaded}/{total} 层匹配")
+    print(f"预训练权重 {loaded}/{total} 层匹配", flush=True)
 
     opt = SGD(net.parameters(), lr=cfg["lr"], momentum=cfg["momentum"],
               weight_decay=cfg["weight_decay"], nesterov=True)
     sched = CosineAnnealingLR(opt, T_max=cfg["epochs"])
     scaler = torch.amp.GradScaler("cuda", enabled=cfg["amp"])
 
-    best_acc = 0.0
-    started = time.time()
     ckpt_path = CKPT_DIR / f"{cfg['name']}_seed{cfg['seed']}.pt"
+    last_path = CKPT_DIR / f"{cfg['name']}_seed{cfg['seed']}_last.pt"
     ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
-    for epoch in range(1, cfg["epochs"] + 1):
+    best_acc = 0.0
+    start_epoch = 1
+    if args.resume and last_path.exists():
+        state = torch.load(last_path, map_location=device, weights_only=False)
+        net.load_state_dict(state["state_dict"])
+        opt.load_state_dict(state["optimizer"])
+        sched.load_state_dict(state["scheduler"])
+        scaler.load_state_dict(state["scaler"])
+        start_epoch = state["epoch"] + 1
+        best_acc = state["best_acc"]
+        print(f"续训：从 epoch {start_epoch} 开始，best {best_acc:.4f}", flush=True)
+
+    started = time.time()
+    for epoch in range(start_epoch, cfg["epochs"] + 1):
         net.train()
         run_loss = 0.0
         seen = 0
@@ -96,6 +114,16 @@ def main():
             }, ckpt_path)
             flag = " *"
 
+        # 每轮都落盘，崩了最多丢一个 epoch
+        torch.save({
+            "state_dict": net.state_dict(),
+            "optimizer": opt.state_dict(),
+            "scheduler": sched.state_dict(),
+            "scaler": scaler.state_dict(),
+            "epoch": epoch,
+            "best_acc": best_acc,
+        }, last_path)
+
         print(f"[{epoch:02d}/{cfg['epochs']}] loss {run_loss / seen:.4f} | "
               f"val {val_acc:.4f} | {time.time() - t0:.1f}s{flag}", flush=True)
 
@@ -106,6 +134,7 @@ def main():
         "checkpoint": str(ckpt_path.relative_to(Path(__file__).resolve().parent.parent)),
         "best_val_acc": best_acc,
         "epochs": cfg["epochs"],
+        "resumed_from": start_epoch - 1 if start_epoch > 1 else None,
         "pretrained_layers": f"{loaded}/{total}",
         "config": cfg,
         "config_hash": config_hash(cfg),
