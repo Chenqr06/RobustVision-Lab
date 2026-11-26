@@ -95,10 +95,13 @@ ResNet18 reaches **0.9386 validation / 0.9363 test** (seed 42); at 40 epochs the
 same recipe stopped at 0.9164, because the learning rate was still near its peak
 when training ended.
 
-ResNet50 alone fell short of the recipe: it segfaulted at epoch 74 of 100 (an
-intermittent Windows fault; the same code ran three ResNet18 runs without
-trouble). The shipped checkpoint is epoch 70, validation 0.9366, test 0.9289.
-Every table labels it as such rather than pretending the run completed.
+ResNet50 needs the whole schedule too. An earlier run segfaulted at epoch 74 of
+100 (an intermittent Windows fault; the same code ran three ResNet18 runs
+without trouble), and the epoch-70 checkpoint it left behind scored 0.9289 —
+below ResNet18. Retrained to 100 epochs on the same recipe it reaches **0.9594
+validation / 0.9581 test**, which is what the final tables use. Training now
+writes an optimizer-state checkpoint every epoch and accepts `--resume`; the
+retrain also used `--workers 0` to dodge the crash.
 
 Checkpoints land in `outputs/checkpoints/<model>_seed<k>.pt` and are gitignored.
 A model is only used in experiments if its validation accuracy is recorded in
@@ -124,11 +127,17 @@ Strength is a **lookup table, not a formula.** Five anchors at
 | `brightness` | multiply by factor | 0.94 | 0.82 | 0.62 | 0.38 | 0.16 |
 | `contrast` | blend toward mean, factor | 0.90 | 0.74 | 0.55 | 0.33 | 0.12 |
 | `occlusion` | grey square, area fraction | 0.03 | 0.08 | 0.16 | 0.28 | 0.44 |
-| `jpeg` | quality | 85 | 60 | 35 | 18 | 8 |
+| `jpeg` | quality | 75 | 35 | 15 | 6 | 2 |
 
-Measured accuracy at `s = 1.0` (ResNet18): 0.10 – 0.30 for six of the seven.
-`jpeg` stops at 0.46 because 32×32 images survive compression better than
-larger ones — that ceiling is real, not a tuning failure.
+Measured accuracy at `s = 1.0` (ResNet18, three seeds): **0.11 – 0.31 for all
+seven**. `jpeg` bottoms out at 0.22 with quality 2, and that really is the floor:
+quality 1 gives 0.239 on a 2,000-image probe, i.e. further compression stops
+destroying information because there is nothing left to destroy at 32×32.
+
+An earlier table stopped at quality 8, which left `jpeg` at 0.405 while
+everything else sat near 0.2 — an outlier that made `jpeg` look harmless for no
+reason other than the anchor being set too gently. The five anchors were moved
+after measuring the curve, not guessed.
 
 **The linear formulas this replaced were broken.** The first version used
 `k = 2·round(1+5s)+1` for motion blur, which meant `s = 0.2` already dropped
@@ -231,11 +240,14 @@ launched by a script in `scripts/`, never by hand-editing state in a notebook.
 | E7 | Post-hoc temperature scaling | fit T on validation, apply to every test condition | <1 min |
 
 Time estimates assume a trained checkpoint already exists; they cover inference
-only. Training happens once per model (Stage 2). Measured on the 4060:
-**14.4 s/epoch, 9.9 min for 40 epochs** at batch 128 — about 3× faster than the
-first estimate, which assumed 32×32 would be slower than it is.
+only. Training happens once per model (Stage 2). Measured on the 4060 at batch
+128: **ResNet18 14.4 s/epoch (100 epochs = 24 min), ResNet50 68 s/epoch (100
+epochs = 1 h 55 min)**. The first estimate assumed 32×32 would be slower than it
+is; it also assumed ResNet50 would cost roughly the same as ResNet18, which it
+does not — 4.7× the epochs, 4.7× the time.
 
-The whole grid (56 conditions, 10,000 images each) ran in about 4 minutes.
+The whole grid (56 conditions, 10,000 images each) ran in about 4 minutes for
+ResNet18 and 7.5 minutes for ResNet50.
 `jpeg` dominates that: it round-trips every image through PIL one at a time,
 so it costs seconds where the tensor-space perturbations cost milliseconds.
 
@@ -349,7 +361,7 @@ to be downloaded.
 | CIFAR-10 test set gets used during development | only the validation split is touched before the final tables; each run record names its split |
 | Composite interaction claimed without evidence | E2 reports the per-strength gap only; "worse than the sum" needs the gap to hold across 5 strengths × 2 models |
 | Report overfitted to a lucky seed | final tables use seeds {42, 43, 44}; measured spread was 0.0008 accuracy, so the seed is not doing any work |
-| 8 GB VRAM | batch 128 at 32×32 stays far below the limit — ResNet18 trained for 40 epochs without pressure |
+| 8 GB VRAM | batch 128 at 32×32 stays far below the limit — both models trained 100 epochs without pressure |
 
 ## 11. Acceptance
 
