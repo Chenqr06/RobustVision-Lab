@@ -98,10 +98,16 @@ when training ended.
 ResNet50 needs the whole schedule too. An earlier run segfaulted at epoch 74 of
 100 (an intermittent Windows fault; the same code ran three ResNet18 runs
 without trouble), and the epoch-70 checkpoint it left behind scored 0.9289 —
-below ResNet18. Retrained to 100 epochs on the same recipe it reaches **0.9594
-validation / 0.9581 test**, which is what the final tables use. Training now
-writes an optimizer-state checkpoint every epoch and accepts `--resume`; the
-retrain also used `--workers 0` to dodge the crash.
+below ResNet18. Retrained to 100 epochs on the same recipe, three seeds give
+**0.9594 / 0.9570 / 0.9594 validation, 0.9571 ± 0.0011 test**, which is what the
+final tables use. Training now writes an optimizer-state checkpoint every epoch
+and accepts `--resume`; the retrain also used `--workers 0` to dodge the crash.
+
+Both models get three seeds. ResNet50 costs about 2 hours per seed, so that is
+6 hours of GPU for a 2-point accuracy difference — but the seed spread turned out
+to matter more than expected: on `contrast` at s=1.0 the three ResNet50 runs
+disagree by 0.051 (std), an order of magnitude more than on `jpeg` or
+`motion_blur` (0.002–0.003). One seed would have reported that row as fact.
 
 Checkpoints land in `outputs/checkpoints/<model>_seed<k>.pt` and are gitignored.
 A model is only used in experiments if its validation accuracy is recorded in
@@ -222,6 +228,20 @@ AURC around by luck. At 0.01 the smallest slice is 100 samples.
 Lower AURC is better. A model that is both accurate and well-calibrated gets a
 flat curve near its error rate; an overconfident one gets an L-shape.
 
+**Retention** — accuracy under perturbation divided by that model's own clean
+accuracy, `acc(s) / acc(0)`:
+
+```
+retention(pert, s) = acc_pert(pert, s) / acc_clean
+```
+
+Absolute accuracy mixes two things: how good the model is, and how fast it
+degrades. ResNet50 starts 2.0 points higher than ResNet18, so a straight
+comparison of perturbed accuracies flatters it. Retention isolates the second
+quantity. Reported for `s = 1.0` as a bar chart (`model_retention.png`) and as a
+column in `summary/e1_mean_std.csv`. Not defined for `acc_clean = 0`, which never
+happens here.
+
 ---
 
 ## 6. Experiments
@@ -242,7 +262,7 @@ launched by a script in `scripts/`, never by hand-editing state in a notebook.
 Time estimates assume a trained checkpoint already exists; they cover inference
 only. Training happens once per model (Stage 2). Measured on the 4060 at batch
 128: **ResNet18 14.4 s/epoch (100 epochs = 24 min), ResNet50 68 s/epoch (100
-epochs = 1 h 55 min)**. The first estimate assumed 32×32 would be slower than it
+epochs ≈ 1 h 55 min)**. The first estimate assumed 32×32 would be slower than it
 is; it also assumed ResNet50 would cost roughly the same as ResNet18, which it
 does not — 4.7× the epochs, 4.7× the time.
 

@@ -147,8 +147,10 @@ elif page == "Model Comparison":
     st.title("Model Comparison")
     if len(models) < 2:
         st.info("目前只有一个 run，训完 resnet50 或 seed 43/44 之后这里会自动出对比。")
+    default = [m for m in models if m.endswith("seed42")][:2] or models[:2]
+    chosen = st.multiselect("对比哪些 run", models, default=default, format_func=run_label)
     rows = []
-    for m in models:
+    for m in chosen:
         df = read_csv(RES / m / "e1_single.csv")
         if len(df):
             rows.append(df.assign(run=run_label(m)))
@@ -161,10 +163,16 @@ elif page == "Model Comparison":
             pivot = sub.pivot_table(index="strength", columns=["perturbation", "run"],
                                     values="accuracy")
             st.line_chart(pivot)
-        st.dataframe(
-            all_e1.groupby(["run", "perturbation"]).accuracy.mean().round(4).unstack(),
-            width="stretch",
-        )
+        base = {run_label(m): read_csv(RES / m / "e0_clean.csv") for m in chosen}
+        clean = {k: float(v.accuracy[0]) for k, v in base.items() if len(v)}
+        tail = all_e1[all_e1.strength == 1.0].pivot_table(index="perturbation", columns="run",
+                                                          values="accuracy")
+        st.caption("s=1.0 的准确率，括号里是除以各自干净准确率后的保持率")
+        show = tail.copy()
+        for c in show.columns:
+            show[c] = [f"{v:.3f} ({v / clean[c]:.2f})" if c in clean else f"{v:.3f}"
+                       for v in tail[c]]
+        st.dataframe(show, width="stretch")
 
 elif page == "Calibration":
     st.title("Calibration")
