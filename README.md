@@ -88,7 +88,7 @@ motion blur 最陡，s=0.2 就吃掉 30% 的总损失；brightness 最缓。
 （0.526 vs 0.327）：去掉它之后是 0.216 对 0.224，基本打平。
 
 分得挺清楚：**对光度类扰动和遮挡，多出来的容量确实有用**；对破坏高频细节的三种
-（jpeg、motion blur、gaussian blur），ResNet50 一个都没赢，jpeg 还低了 4 个点。
+（jpeg、motion blur、gaussian blur），ResNet50 一个都没赢，jpeg 的保持率低了近 4 个百分点。
 合理的解释是 CIFAR 的 32×32 图像里高频信息本来就少，ResNet50 那套更深的降采样在干净的
 大图上有效，在这里反而把仅剩的细节丢得更彻底——但这只是解释，没做消融验证。
 
