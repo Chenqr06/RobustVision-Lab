@@ -120,6 +120,27 @@ def model_comparison(agg, path):
     _save(fig, path)
 
 
+def retention_bars(agg, path):
+    """s=1.0 的相对保持率，横向柱状图，一个扰动两组。"""
+    sub = agg[agg.strength == 1.0]
+    models = sorted(sub["model"].unique())
+    order = (sub[sub.model == models[0]].set_index("perturbation")["acc_rel"]
+             .sort_values().index.tolist())
+    y = np.arange(len(order))
+    h = 0.8 / len(models)
+    fig, ax = plt.subplots(figsize=(6.0, 3.8))
+    for i, m in enumerate(models):
+        s = sub[sub.model == m].set_index("perturbation").reindex(order)
+        ax.barh(y + (i - (len(models) - 1) / 2) * h, s["acc_rel"], h * 0.92,
+                label=m, alpha=0.88)
+    ax.set_yticks(y, [o.replace("_", " ") for o in order])
+    ax.set_xlabel("accuracy retained at s=1.0  (acc / acc_clean)")
+    ax.set_xlim(0, 1)
+    ax.legend(fontsize=8, frameon=False, loc="lower right")
+    ax.grid(axis="y", visible=False)
+    _save(fig, path)
+
+
 def reliability_plot(grid, model_name, worst_key, path, n_bins=15):
     fig, ax = plt.subplots(figsize=(4.4, 4.2))
     ax.plot([0, 1], [0, 1], "--", color="grey", lw=1, label="perfect")

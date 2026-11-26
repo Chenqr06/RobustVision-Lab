@@ -66,6 +66,11 @@ def main():
                  .reset_index())
     clean_sum.to_csv(SUM / "clean_summary.csv", index=False)
 
+    # 干净基线不一样时，绝对准确率没法直接比鲁棒性
+    clean_map = clean_sum.set_index("model")["acc_mean"].to_dict()
+    agg["acc_rel"] = agg["acc_mean"] / agg["model"].map(clean_map)
+    agg.to_csv(SUM / "e1_mean_std.csv", index=False)
+
     temp_sum = (e7_all.groupby(["model", "condition"])
                 .agg(temp=("temperature", "mean"),
                      ece_before=("ece_before", "mean"), ece_after=("ece_after", "mean"))
@@ -80,10 +85,19 @@ def main():
                                                 values="acc_mean")
     print(tail.to_string(float_format=lambda v: f"{v:.4f}"))
 
+    print()
+    print("== s=1.0 保持率（除以各自的干净准确率）==")
+    ret = agg[agg.strength == 1.0].pivot_table(index="perturbation", columns="model",
+                                               values="acc_rel")
+    print(ret.to_string(float_format=lambda v: f"{v:.3f}"))
+    print(f"\n各模型平均保持率：{ret.mean().round(3).to_dict()}")
+
     if not args.no_figures:
         fig_dir = OUT_DIR / "figures"
         figures.model_comparison(agg, fig_dir / "model_comparison.png")
+        figures.retention_bars(agg, fig_dir / "model_retention.png")
         print(f"\n图：{fig_dir / 'model_comparison.png'}")
+        print(f"图：{fig_dir / 'model_retention.png'}")
 
 
 if __name__ == "__main__":

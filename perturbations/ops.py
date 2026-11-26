@@ -17,7 +17,7 @@ MOTION_K = [3, 5, 7, 9, 11]
 BRIGHT_FACTOR = [0.94, 0.82, 0.62, 0.38, 0.16]
 CONTRAST_FACTOR = [0.90, 0.74, 0.55, 0.33, 0.12]
 OCC_AREA = [0.03, 0.08, 0.16, 0.28, 0.44]
-JPEG_QUALITY = [85, 60, 35, 18, 8]
+JPEG_QUALITY = [75, 35, 15, 6, 2]
 
 
 def _check(x: torch.Tensor) -> None:

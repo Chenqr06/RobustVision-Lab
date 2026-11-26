@@ -2,11 +2,18 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from dataio.cifar import denormalize, get_datasets, load_npz
+
+# 数据不进仓库，clone 下来没跑过 download_data.py 时这些测试直接跳过
+HAS_DATA = (ROOT / "data" / "cifar10.npz").exists()
+pytestmark = pytest.mark.skipif(not HAS_DATA, reason="data/cifar10.npz 不存在，先跑 scripts/download_data.py")
+
 
 
 def test_npz_shapes():
