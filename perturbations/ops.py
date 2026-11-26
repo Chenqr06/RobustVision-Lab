@@ -41,8 +41,10 @@ def gaussian_noise(x, s, seed=0):
     _check(x)
     if s <= 0:
         return x.clone()
-    g = torch.Generator(device=x.device).manual_seed(seed)
-    noise = torch.randn(x.shape, generator=g, device=x.device, dtype=x.dtype)
+    # 随机数固定在 CPU 上生成：CUDA 和 CPU 的同种子序列不一样，
+    # 换设备跑会得到不同的噪声，缓存和结论就对不上了
+    g = torch.Generator().manual_seed(seed)
+    noise = torch.randn(x.shape, generator=g, dtype=x.dtype).to(x.device)
     return (x + _lerp(NOISE_SIGMA, s) * noise).clamp(0, 1)
 
 

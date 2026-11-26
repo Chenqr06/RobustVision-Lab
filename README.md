@@ -24,7 +24,7 @@
 | 指标（Acc / ECE / MCE / Brier / AURC） | 完成 |
 | 实验 E1–E7 | 完成 |
 | Streamlit 平台（6 页） | 完成 |
-| 测试 | 66 个，全过 |
+| 测试 | 67 个，全过 |
 
 ## 结果
 
@@ -181,7 +181,7 @@ python scripts/train.py --config configs/resnet50.yaml --seed 42  # 约 1 小时
 python scripts/run_experiment.py --model resnet18 --seed 42       # 全网格，约 4 分钟
 python scripts/aggregate.py                                       # 多种子汇总 + 对比图
 streamlit run app/main.py                                         # 六页界面
-pytest                                                            # 66 个测试
+pytest                                                            # 67 个测试
 ```
 
 训练中途断了不用从头来：每轮会写 `outputs/checkpoints/<model>_seed<k>_last.pt`（含优化器和
@@ -201,7 +201,7 @@ metrics/        Accuracy / ECE / MCE / Brier / Risk–Coverage / 温度缩放
 experiments/    网格扫描、指标汇总、绘图
 app/            Streamlit 六页界面
 scripts/        下载 / 训练 / 实验 / 汇总
-tests/          66 个单元测试
+tests/          67 个单元测试
 docs/figures/   README 用的结果图
 outputs/        结果 CSV、JSON、checkpoint，不进仓库
 ```

@@ -88,3 +88,12 @@ def test_unknown_names_raise():
         apply("nope", _img(), 0.5)
     with pytest.raises(KeyError):
         Composite("nope")
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="需要 CUDA")
+def test_noise_identical_on_gpu():
+    # 噪声的随机数固定在 CPU 生成，换设备不能换结果
+    x = _img(seed=11)
+    a = apply("gaussian_noise", x, 0.6, seed=7)
+    b = apply("gaussian_noise", x.cuda(), 0.6, seed=7).cpu()
+    assert torch.allclose(a, b, atol=1e-6)

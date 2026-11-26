@@ -122,6 +122,14 @@ in place, and are parameterised by `strength s ∈ [0, 1]`, where `s = 0` is the
 identity. The RNG is seeded per call, so the same image gets the same corruption
 whichever model is being scored.
 
+Perturbations run **on the model's device**, not on CPU: the batch is moved to
+the GPU first and the tensor maths happens there. The one exception is the RNG
+draw itself, which stays on CPU — CUDA and CPU do not produce the same stream for
+the same seed, and device-dependent noise would silently break the
+"same seed, same corruption" contract and invalidate the probability cache.
+`jpeg` also returns to CPU for encode/decode because `torchvision` 0.26 has no
+batched JPEG path; that makes it the slowest condition in the grid by far.
+
 Strength is a **lookup table, not a formula.** Five anchors at
 `s ∈ {0.2, 0.4, 0.6, 0.8, 1.0}`, linearly interpolated in between:
 

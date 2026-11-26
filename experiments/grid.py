@@ -28,11 +28,14 @@ def _perturb(pert, x, strength):
 
 @torch.no_grad()
 def run_one(model, loader, pert, strength, seed=FIXED_SEED):
+    """扰动在显存里做，别在 CPU 上算完再搬过去。"""
+    dev = getattr(model, "device", "cpu")
     ps, ys = [], []
     for x, y in loader:
+        x = x.to(dev, non_blocking=True)
         if pert is not None:
             x = normalize(_perturb(pert, denormalize(x), strength))
-        ps.append(model.predict_proba(x).cpu())
+        ps.append(model.predict_proba(x).float().cpu())
         ys.append(y)
     return torch.cat(ps), torch.cat(ys)
 
